@@ -9,8 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from nets.pspnet import PSPNet
-from nets.pspnet_training import (get_lr_scheduler, set_optimizer_lr,
-                                  weights_init)
+from nets.pspnet_training import get_lr_scheduler, set_optimizer_lr, weights_init
 from utils.callbacks import LossHistory, EvalCallback
 from utils.dataloader import PSPnetDataset, pspnet_dataset_collate
 from utils.utils import download_weights, show_config
@@ -18,6 +17,7 @@ from utils.utils_fit import fit_one_epoch
 
 
 # 如果格式有误，参考：https://github.com/bubbliiiing/segmentation-format-fix
+
 
 def main(args):
     Cuda = args.cuda
@@ -34,9 +34,9 @@ def main(args):
     # ----------------------------------------------------------------------------------------------------------------------------#
     #   训练分为两个阶段，分别是冻结阶段和解冻阶段。设置冻结阶段是为了满足机器性能不足的同学的训练需求。
     #   冻结训练需要的显存较小，显卡非常差的情况下，可设置Freeze_Epoch等于UnFreeze_Epoch，此时仅仅进行冻结训练。
-    #      
+    #
     #   在此提供若干参数设置建议，各位训练者根据自己的需求进行灵活调整：
-    #   （一）从整个模型的预训练权重开始训练： 
+    #   （一）从整个模型的预训练权重开始训练：
     #       Adam：
     #           Init_Epoch = 0，Freeze_Epoch = 50，UnFreeze_Epoch = 100，Freeze_Train = True，optimizer_type = 'adam'，Init_lr = 5e-4，weight_decay = 0。（冻结）
     #           Init_Epoch = 0，UnFreeze_Epoch = 100，Freeze_Train = False，optimizer_type = 'adam'，Init_lr = 5e-4，weight_decay = 0。（不冻结）
@@ -150,10 +150,12 @@ def main(args):
         rank = int(os.environ["RANK"])
         device = torch.device("cuda", local_rank)
         if local_rank == 0:
-            print(f"[{os.getpid()}] (rank = {rank}, local_rank = {local_rank}) training...")
+            print(
+                f"[{os.getpid()}] (rank = {rank}, local_rank = {local_rank}) training..."
+            )
             print("Gpu Device Count : ", ngpus_per_node)
     else:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         local_rank = 0
 
     if pretrained:
@@ -164,16 +166,18 @@ def main(args):
         else:
             download_weights(backbone)
 
-    model = PSPNet(num_classes=num_classes,
-                   backbone=backbone,
-                   downsample_factor=downsample_factor,
-                   pretrained=pretrained,
-                   aux_branch=aux_branch)
+    model = PSPNet(
+        num_classes=num_classes,
+        backbone=backbone,
+        downsample_factor=downsample_factor,
+        pretrained=pretrained,
+        aux_branch=aux_branch,
+    )
     if not pretrained:
         weights_init(model)
-    if model_path != '':
+    if model_path != "":
         if local_rank == 0:
-            print('Load weights {}.'.format(model_path))
+            print("Load weights {}.".format(model_path))
         # ------------------------------------------------------#
         #   根据预训练权重的Key和模型的Key进行加载
         # ------------------------------------------------------#
@@ -192,15 +196,27 @@ def main(args):
         #   显示没有匹配上的Key
         # ------------------------------------------------------#
         if local_rank == 0:
-            print("\nSuccessful Load Key:", str(load_key)[:500], "……\nSuccessful Load Key Num:", len(load_key))
-            print("\nFail To Load Key:", str(no_load_key)[:500], "……\nFail To Load Key num:", len(no_load_key))
+            print(
+                "\nSuccessful Load Key:",
+                str(load_key)[:500],
+                "……\nSuccessful Load Key Num:",
+                len(load_key),
+            )
+            print(
+                "\nFail To Load Key:",
+                str(no_load_key)[:500],
+                "……\nFail To Load Key num:",
+                len(no_load_key),
+            )
             print("\n\033[1;33;44m温馨提示，head部分没有载入是正常现象，Backbone部分没有载入是错误的。\033[0m")
 
     # ----------------------#
     #   记录Loss
     # ----------------------#
     if local_rank == 0:
-        time_str = datetime.datetime.strftime(datetime.datetime.now(), '%Y_%m_%d_%H_%M_%S')
+        time_str = datetime.datetime.strftime(
+            datetime.datetime.now(), "%Y_%m_%d_%H_%M_%S"
+        )
         log_dir = os.path.join(save_dir, "loss_" + str(time_str))
         loss_history = LossHistory(log_dir, model, input_shape=input_shape)
     else:
@@ -232,8 +248,9 @@ def main(args):
             #   多卡平行运行
             # ----------------------------#
             model_train = model_train.cuda(local_rank)
-            model_train = torch.nn.parallel.DistributedDataParallel(model_train, device_ids=[local_rank],
-                                                                    find_unused_parameters=True)
+            model_train = torch.nn.parallel.DistributedDataParallel(
+                model_train, device_ids=[local_rank], find_unused_parameters=True
+            )
         else:
             model_train = torch.nn.DataParallel(model)
             cudnn.benchmark = True
@@ -242,25 +259,43 @@ def main(args):
     # ---------------------------#
     #   读取数据集对应的txt
     # ---------------------------#
-    with open(os.path.join(SUIMdevkit_path, "SUIM2022/ImageSets/Segmentation/train.txt"), "r") as f:
+    with open(
+        os.path.join(SUIMdevkit_path, "SUIM2022/ImageSets/Segmentation/train.txt"), "r"
+    ) as f:
         train_lines = f.readlines()
-    with open(os.path.join(SUIMdevkit_path, "SUIM2022/ImageSets/Segmentation/val.txt"), "r") as f:
+    with open(
+        os.path.join(SUIMdevkit_path, "SUIM2022/ImageSets/Segmentation/val.txt"), "r"
+    ) as f:
         val_lines = f.readlines()
     num_train = len(train_lines)
     num_val = len(val_lines)
 
     if local_rank == 0:
         show_config(
-            num_classes=num_classes, backbone=backbone, model_path=model_path, input_shape=input_shape,
-            Init_Epoch=Init_Epoch, Freeze_Epoch=Freeze_Epoch, UnFreeze_Epoch=UnFreeze_Epoch,
-            Freeze_batch_size=Freeze_batch_size, Unfreeze_batch_size=Unfreeze_batch_size, Freeze_Train=Freeze_Train,
-            Init_lr=Init_lr, Min_lr=Min_lr, optimizer_type=optimizer_type, momentum=momentum,
+            num_classes=num_classes,
+            backbone=backbone,
+            model_path=model_path,
+            input_shape=input_shape,
+            Init_Epoch=Init_Epoch,
+            Freeze_Epoch=Freeze_Epoch,
+            UnFreeze_Epoch=UnFreeze_Epoch,
+            Freeze_batch_size=Freeze_batch_size,
+            Unfreeze_batch_size=Unfreeze_batch_size,
+            Freeze_Train=Freeze_Train,
+            Init_lr=Init_lr,
+            Min_lr=Min_lr,
+            optimizer_type=optimizer_type,
+            momentum=momentum,
             lr_decay_type=lr_decay_type,
-            save_period=save_period, save_dir=save_dir, num_workers=num_workers, num_train=num_train, num_val=num_val
+            save_period=save_period,
+            save_dir=save_dir,
+            num_workers=num_workers,
+            num_train=num_train,
+            num_val=num_val,
         )
         # ---------------------------------------------------------#
         #   总训练世代指的是遍历全部数据的总次数
-        #   总训练步长指的是梯度下降的总次数 
+        #   总训练步长指的是梯度下降的总次数
         #   每个训练世代包含若干训练步长，每个训练步长进行一次梯度下降。
         #   此处仅建议最低训练世代，上不封顶，计算时只考虑了解冻部分
         # ----------------------------------------------------------#
@@ -268,11 +303,18 @@ def main(args):
         total_step = num_train // Unfreeze_batch_size * UnFreeze_Epoch
         if total_step <= wanted_step:
             wanted_epoch = wanted_step // (num_train // Unfreeze_batch_size) + 1
-            print("\n\033[1;33;44m[Warning] 使用%s优化器时，建议将训练总步长设置到%d以上。\033[0m" % (optimizer_type, wanted_step))
-            print("\033[1;33;44m[Warning] 本次运行的总训练数据量为%d，Unfreeze_batch_size为%d，共训练%d个Epoch，计算出总训练步长为%d。\033[0m" % (
-            num_train, Unfreeze_batch_size, UnFreeze_Epoch, total_step))
-            print("\033[1;33;44m[Warning] 由于总训练步长为%d，小于建议总步长%d，建议设置总世代为%d。\033[0m" % (
-            total_step, wanted_step, wanted_epoch))
+            print(
+                "\n\033[1;33;44m[Warning] 使用%s优化器时，建议将训练总步长设置到%d以上。\033[0m"
+                % (optimizer_type, wanted_step)
+            )
+            print(
+                "\033[1;33;44m[Warning] 本次运行的总训练数据量为%d，Unfreeze_batch_size为%d，共训练%d个Epoch，计算出总训练步长为%d。\033[0m"
+                % (num_train, Unfreeze_batch_size, UnFreeze_Epoch, total_step)
+            )
+            print(
+                "\033[1;33;44m[Warning] 由于总训练步长为%d，小于建议总步长%d，建议设置总世代为%d。\033[0m"
+                % (total_step, wanted_step, wanted_epoch)
+            )
 
     # ------------------------------------------------------#
     #   主干特征提取网络特征通用，冻结训练可以加快训练速度
@@ -300,24 +342,38 @@ def main(args):
         #   判断当前batch_size，自适应调整学习率
         # -------------------------------------------------------------------#
         nbs = 16
-        lr_limit_max = 5e-4 if optimizer_type == 'adam' else 1e-1
-        lr_limit_min = 3e-4 if optimizer_type == 'adam' else 5e-4
+        lr_limit_max = 5e-4 if optimizer_type == "adam" else 1e-1
+        lr_limit_min = 3e-4 if optimizer_type == "adam" else 5e-4
         Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
-        Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
+        Min_lr_fit = min(
+            max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2
+        )
 
         # ---------------------------------------#
         #   根据optimizer_type选择优化器
         # ---------------------------------------#
         optimizer = {
-            'adam': optim.Adam(model.parameters(), Init_lr_fit, betas=(momentum, 0.999), weight_decay=weight_decay),
-            'sgd': optim.SGD(model.parameters(), Init_lr_fit, momentum=momentum, nesterov=True,
-                             weight_decay=weight_decay)
+            "adam": optim.Adam(
+                model.parameters(),
+                Init_lr_fit,
+                betas=(momentum, 0.999),
+                weight_decay=weight_decay,
+            ),
+            "sgd": optim.SGD(
+                model.parameters(),
+                Init_lr_fit,
+                momentum=momentum,
+                nesterov=True,
+                weight_decay=weight_decay,
+            ),
         }[optimizer_type]
 
         # ---------------------------------------#
         #   获得学习率下降的公式
         # ---------------------------------------#
-        lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch)
+        lr_scheduler_func = get_lr_scheduler(
+            lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch
+        )
 
         # ---------------------------------------#
         #   判断每一个世代的长度
@@ -328,12 +384,22 @@ def main(args):
         if epoch_step == 0 or epoch_step_val == 0:
             raise ValueError("数据集过小，无法继续进行训练，请扩充数据集。")
 
-        train_dataset = PSPnetDataset(train_lines, input_shape, num_classes, True, SUIMdevkit_path)
-        val_dataset = PSPnetDataset(val_lines, input_shape, num_classes, False, SUIMdevkit_path)
+        train_dataset = PSPnetDataset(
+            train_lines, input_shape, num_classes, True, SUIMdevkit_path
+        )
+        val_dataset = PSPnetDataset(
+            val_lines, input_shape, num_classes, False, SUIMdevkit_path
+        )
 
         if distributed:
-            train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, )
-            val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, )
+            train_sampler = torch.utils.data.distributed.DistributedSampler(
+                train_dataset,
+                shuffle=True,
+            )
+            val_sampler = torch.utils.data.distributed.DistributedSampler(
+                val_dataset,
+                shuffle=False,
+            )
             batch_size = batch_size // ngpus_per_node
             shuffle = False
         else:
@@ -341,19 +407,42 @@ def main(args):
             val_sampler = None
             shuffle = True
 
-        gen = DataLoader(train_dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                         pin_memory=True,
-                         drop_last=True, collate_fn=pspnet_dataset_collate, sampler=train_sampler)
-        gen_val = DataLoader(val_dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                             pin_memory=True,
-                             drop_last=True, collate_fn=pspnet_dataset_collate, sampler=val_sampler)
+        gen = DataLoader(
+            train_dataset,
+            shuffle=shuffle,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=True,
+            collate_fn=pspnet_dataset_collate,
+            sampler=train_sampler,
+        )
+        gen_val = DataLoader(
+            val_dataset,
+            shuffle=shuffle,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            pin_memory=True,
+            drop_last=True,
+            collate_fn=pspnet_dataset_collate,
+            sampler=val_sampler,
+        )
 
         # ----------------------#
         #   记录eval的map曲线
         # ----------------------#
         if local_rank == 0:
-            eval_callback = EvalCallback(model, input_shape, num_classes, val_lines, SUIMdevkit_path, log_dir, Cuda,
-                                         eval_flag=eval_flag, period=eval_period)
+            eval_callback = EvalCallback(
+                model,
+                input_shape,
+                num_classes,
+                val_lines,
+                SUIMdevkit_path,
+                log_dir,
+                Cuda,
+                eval_flag=eval_flag,
+                period=eval_period,
+            )
         else:
             eval_callback = None
 
@@ -372,14 +461,21 @@ def main(args):
                 #   判断当前batch_size，自适应调整学习率
                 # -------------------------------------------------------------------#
                 nbs = 16
-                lr_limit_max = 5e-4 if optimizer_type == 'adam' else 1e-1
-                lr_limit_min = 3e-4 if optimizer_type == 'adam' else 5e-4
-                Init_lr_fit = min(max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max)
-                Min_lr_fit = min(max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2), lr_limit_max * 1e-2)
+                lr_limit_max = 5e-4 if optimizer_type == "adam" else 1e-1
+                lr_limit_min = 3e-4 if optimizer_type == "adam" else 5e-4
+                Init_lr_fit = min(
+                    max(batch_size / nbs * Init_lr, lr_limit_min), lr_limit_max
+                )
+                Min_lr_fit = min(
+                    max(batch_size / nbs * Min_lr, lr_limit_min * 1e-2),
+                    lr_limit_max * 1e-2,
+                )
                 # ---------------------------------------#
                 #   获得学习率下降的公式
                 # ---------------------------------------#
-                lr_scheduler_func = get_lr_scheduler(lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch)
+                lr_scheduler_func = get_lr_scheduler(
+                    lr_decay_type, Init_lr_fit, Min_lr_fit, UnFreeze_Epoch
+                )
 
                 for param in model.backbone.parameters():
                     param.requires_grad = True
@@ -393,12 +489,26 @@ def main(args):
                 if distributed:
                     batch_size = batch_size // ngpus_per_node
 
-                gen = DataLoader(train_dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                 pin_memory=True,
-                                 drop_last=True, collate_fn=pspnet_dataset_collate, sampler=train_sampler)
-                gen_val = DataLoader(val_dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers,
-                                     pin_memory=True,
-                                     drop_last=True, collate_fn=pspnet_dataset_collate, sampler=val_sampler)
+                gen = DataLoader(
+                    train_dataset,
+                    shuffle=shuffle,
+                    batch_size=batch_size,
+                    num_workers=num_workers,
+                    pin_memory=True,
+                    drop_last=True,
+                    collate_fn=pspnet_dataset_collate,
+                    sampler=train_sampler,
+                )
+                gen_val = DataLoader(
+                    val_dataset,
+                    shuffle=shuffle,
+                    batch_size=batch_size,
+                    num_workers=num_workers,
+                    pin_memory=True,
+                    drop_last=True,
+                    collate_fn=pspnet_dataset_collate,
+                    sampler=val_sampler,
+                )
 
                 UnFreeze_flag = True
 
@@ -407,9 +517,30 @@ def main(args):
 
             set_optimizer_lr(optimizer, lr_scheduler_func, epoch)
 
-            fit_one_epoch(model_train, model, loss_history, eval_callback, optimizer, epoch,
-                          epoch_step, epoch_step_val, gen, gen_val, UnFreeze_Epoch, Cuda, dice_loss, focal_loss,
-                          cls_weights, aux_branch, num_classes, fp16, scaler, save_period, save_dir, local_rank)
+            fit_one_epoch(
+                model_train,
+                model,
+                loss_history,
+                eval_callback,
+                optimizer,
+                epoch,
+                epoch_step,
+                epoch_step_val,
+                gen,
+                gen_val,
+                UnFreeze_Epoch,
+                Cuda,
+                dice_loss,
+                focal_loss,
+                cls_weights,
+                aux_branch,
+                num_classes,
+                fp16,
+                scaler,
+                save_period,
+                save_dir,
+                local_rank,
+            )
 
             if distributed:
                 dist.barrier()
@@ -420,20 +551,34 @@ def main(args):
 
 def parse_args():
     import argparse
+
     parser = argparse.ArgumentParser(description="pytorch pspnet training")
-    parser.add_argument("--data-path", default="../../dataset/SUIMdevkit", help="dataset root")
-    parser.add_argument("--backbone", default="resnet50", type=str, help="mobilenet, resnet50")
-    parser.add_argument("--input-size", default=512, type=int, help="the size of input image")
+    parser.add_argument(
+        "--data-path", default="../../dataset/SUIMdevkit", help="dataset root"
+    )
+    parser.add_argument(
+        "--backbone", default="resnet50", type=str, help="mobilenet, resnet50"
+    )
+    parser.add_argument(
+        "--input-size", default=512, type=int, help="the size of input image"
+    )
     parser.add_argument("--downsample-factor", default=8, type=int, help="8, 16")
     parser.add_argument("--model-path", default="", help="model weights path")
     parser.add_argument("--num-classes", default=7, type=int)
     parser.add_argument("--pretrained", default=False, type=bool)
 
     parser.add_argument("--cuda", default=True, type=bool, help="use cuda")
-    parser.add_argument("--fp16", default=True, type=bool, help="Mixed precision training")
+    parser.add_argument(
+        "--fp16", default=True, type=bool, help="Mixed precision training"
+    )
     parser.add_argument("--aux-branch", default=True, type=bool, help="auxilier loss")
     parser.add_argument("--device", default="cuda:0", help="training device")
-    parser.add_argument("--amp", default=True, type=bool, help="Use torch.cuda.amp for mixed precision training")
+    parser.add_argument(
+        "--amp",
+        default=True,
+        type=bool,
+        help="Use torch.cuda.amp for mixed precision training",
+    )
 
     # 模型训练超参数 冻结参数训练
     parser.add_argument("--freeze-train", default=False, type=bool)
@@ -459,7 +604,7 @@ def parse_args():
 
     # 模型优化器超参数 Adam, SGD优化器
     parser.add_argument(
-        "--init-lr", default=7e-3, type=float, help="initial learning rate"
+        "--init-lr", default=1e-2, type=float, help="initial learning rate"
     )  # adam: 5e-4, sgd: 1e-2
     parser.add_argument("--optimizer", default="sgd", type=str)
     parser.add_argument(
